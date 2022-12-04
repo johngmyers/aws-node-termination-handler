@@ -16,6 +16,7 @@ package config
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -26,7 +27,6 @@ import (
 const (
 	// EC2 Instance Metadata is configurable mainly for testing purposes
 	instanceMetadataURLConfigKey            = "INSTANCE_METADATA_URL"
-	defaultInstanceMetadataURL              = "http://169.254.169.254"
 	dryRunConfigKey                         = "DRY_RUN"
 	nodeNameConfigKey                       = "NODE_NAME"
 	podNameConfigKey                        = "POD_NAME"
@@ -173,7 +173,7 @@ func ParseCliArgs() (config Config, err error) {
 	flag.BoolVar(&config.DryRun, "dry-run", getBoolEnv(dryRunConfigKey, false), "If true, only log if a node would be drained")
 	flag.StringVar(&config.NodeName, "node-name", getEnv(nodeNameConfigKey, ""), "The kubernetes node name")
 	flag.StringVar(&config.PodName, "pod-name", getEnv(podNameConfigKey, ""), "The kubernetes pod name")
-	flag.StringVar(&config.MetadataURL, "metadata-url", getEnv(instanceMetadataURLConfigKey, defaultInstanceMetadataURL), "The URL of EC2 instance metadata. This shouldn't need to be changed unless you are testing.")
+	flag.StringVar(&config.MetadataURL, "metadata-url", getEnv(instanceMetadataURLConfigKey, defaultInstanceMetadataURL()), "The URL of EC2 instance metadata. This shouldn't need to be changed unless you are testing.")
 	flag.BoolVar(&config.IgnoreDaemonSets, "ignore-daemon-sets", getBoolEnv(ignoreDaemonSetsConfigKey, true), "If true, ignore daemon sets and drain other pods when a spot interrupt is received.")
 	flag.BoolVar(&config.DeleteLocalData, "delete-local-data", getBoolEnv(deleteLocalDataConfigKey, true), "If true, do not drain pods that are using local node storage in emptyDir")
 	flag.StringVar(&config.KubernetesServiceHost, "kubernetes-service-host", getEnv(kubernetesServiceHostConfigKey, ""), "[ADVANCED] The k8s service host to send api calls to.")
@@ -452,4 +452,23 @@ func isConfigProvided(cliArgName string, envVarName string) bool {
 		}
 	})
 	return cliArgProvided
+}
+
+func defaultInstanceMetadataURL() string {
+	hasIPv4 := true
+	addrs, err := net.InterfaceAddrs()
+	if err == nil {
+		hasIPv4 = false
+		for _, addr := range addrs {
+			str := addr.String()
+			if !strings.HasPrefix(str, "127.") && !strings.Contains(str, ":") {
+				hasIPv4 = true
+				break
+			}
+		}
+	}
+	if hasIPv4 {
+		return "http://169.254.169.254"
+	}
+	return "http://[fd00:ec2::254]"
 }
